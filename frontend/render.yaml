@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: loveapplication-frontend
+    name: loveaplication-frontend
     env: static
     buildCommand: npm run build
     staticPublishPath: build
