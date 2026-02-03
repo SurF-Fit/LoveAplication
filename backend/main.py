@@ -13,6 +13,7 @@ import uuid
 import json
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+import hashlib
 
 # Импорт моделей и схем
 from models import Base, User, Couple, Test, TestResult, SharedTestResult, LoveMessage
@@ -52,7 +53,10 @@ SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+pwd_context = CryptContext(
+    schemes=["pbkdf2_sha256", "django_argon2", "django_bcrypt"],
+    deprecated="auto"
+)
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 
 # Директория для загрузки файлов
@@ -71,13 +75,13 @@ def get_db():
 
 
 # Вспомогательные функции
-def verify_password(plain_password, hashed_password):
-    return pwd_context.verify(plain_password, hashed_password)
+def get_password_hash(password: str) -> str:
+    """Простое хеширование SHA256 (устраняет проблему bcrypt)"""
+    return hashlib.sha256(password.encode()).hexdigest()
 
-
-def get_password_hash(password):
-    return pwd_context.hash(password)
-
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """Простая проверка пароля"""
+    return get_password_hash(plain_password) == hashed_password
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode = data.copy()
