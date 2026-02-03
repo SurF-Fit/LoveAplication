@@ -1,0 +1,21 @@
+static_sites:
+  - name: loveapplication-frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./build
+    headers:
+      - path: /*
+        name: Content-Type
+        value: text/html
+      - path: /static/css/*
+        name: Content-Type
+        value: text/css
+      - path: /static/js/*
+        name: Content-Type
+        value: application/javascript
+      - path: /assets/*
+        name: Content-Type
+        value: image/png
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
