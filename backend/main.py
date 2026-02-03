@@ -1,84 +1,58 @@
-import os
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse, JSONResponse
-from sqlalchemy import create_engine, Column, Integer, String, Text
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
-from pydantic import BaseModel
-from typing import List
-import logging
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi.responses import JSONResponse
+from sqlalchemy.orm import Session
+from typing import List, Optional
+import shutil
+import os
+from datetime import datetime, timedelta
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+import uuid
+import json
 
-# Настройка логирования
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Конфигурация базы данных
-if os.getenv("RENDER"):  # Проверяем, что мы на Render
-    # Используем PostgreSQL от Render
-    DATABASE_URL = os.getenv("DATABASE_URL")
-    if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
-        DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
-else:
-    # Локально используем SQLite
-    DATABASE_URL = "sqlite:///./test.db"
-
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-
-# Модель данных
-class Task(Base):
-    __tablename__ = "tasks"
-
-    id = Column(Integer, primary_key=True, index=True)
-    title = Column(String(200), nullable=False)
-    description = Column(Text, nullable=True)
-    completed = Column(Integer, default=0)  # 0 = не выполнено, 1 = выполнено
-
+# Импорт моделей и схем
+from models import Base, User, Couple, Test, TestResult, SharedTestResult, LoveMessage
+from database import engine, SessionLocal
+from schemas import (
+    UserCreate, UserResponse, UserLogin,
+    CoupleCreate, CoupleResponse,
+    TestCreate, TestResponse, TestQuestion,
+    TestAnswer, TestResultResponse,
+    SharedResultResponse, LoveMessageCreate,
+    Token, TokenData
+)
 
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
 
+app = FastAPI(title="Love Application", version="1.0.0")
 
-# Pydantic схемы
-class TaskCreate(BaseModel):
-    title: str
-    description: str = ""
-
-
-class TaskResponse(BaseModel):
-    id: int
-    title: str
-    description: str
-    completed: int
-
-    class Config:
-        from_attributes = True
-
-
-# FastAPI приложение
-app = FastAPI(title="My SPA App", version="1.0.0")
-
-# CORS для доступа с любых доменов
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # В продакшене замените на конкретные домены
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Раздаем статику фронтенда
-# В Render фронтенд будет в отдельном сервисе, но для простоты можно и так
-frontend_dir = os.path.join(os.path.dirname(__file__), "..", "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+# Настройки
+SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+
+# Директория для загрузки файлов
+UPLOAD_DIR = "uploads"
+AVATAR_DIR = os.path.join(UPLOAD_DIR, "avatars")
+os.makedirs(AVATAR_DIR, exist_ok=True)
 
 
-# Dependency для получения сессии БД
+# Dependency для БД
 def get_db():
     db = SessionLocal()
     try:
@@ -87,77 +61,529 @@ def get_db():
         db.close()
 
 
-# API эндпоинты
-@app.get("/")
-async def root():
-    """Главная страница - отдаем SPA"""
-    index_path = os.path.join(frontend_dir, "index.html")
-    if os.path.exists(index_path):
-        return FileResponse(index_path)
-    return {"message": "API работает! Перейдите на /docs для документации"}
+# Вспомогательные функции
+def verify_password(plain_password, hashed_password):
+    return pwd_context.verify(plain_password, hashed_password)
 
 
-@app.get("/api/health")
-async def health_check():
-    """Проверка здоровья приложения"""
-    return {"status": "healthy", "service": "my-spa-app", "environment": os.getenv("RENDER_ENV", "development")}
+def get_password_hash(password):
+    return pwd_context.hash(password)
 
 
-@app.get("/api/tasks", response_model=List[TaskResponse])
-async def get_tasks(db: Session = Depends(get_db)):
-    """Получить все задачи"""
-    tasks = db.query(Task).all()
-    return tasks
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
 
-@app.post("/api/tasks", response_model=TaskResponse)
-async def create_task(task: TaskCreate, db: Session = Depends(get_db)):
-    """Создать новую задачу"""
-    db_task = Task(**task.model_dump())
-    db.add(db_task)
+async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+        token_data = TokenData(user_id=user_id)
+    except JWTError:
+        raise credentials_exception
+    user = db.query(User).filter(User.id == token_data.user_id).first()
+    if user is None:
+        raise credentials_exception
+    return user
+
+
+# Функция для генерации кода пары
+def generate_couple_code():
+    return str(uuid.uuid4())[:8].upper()
+
+
+# ==================== Аутентификация ====================
+
+@app.post("/register", response_model=UserResponse)
+async def register(user_data: UserCreate, db: Session = Depends(get_db)):
+    # Проверяем, есть ли уже пользователь с таким email
+    existing_user = db.query(User).filter(User.email == user_data.email).first()
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email уже зарегистрирован")
+
+    # Создаем пользователя
+    hashed_password = get_password_hash(user_data.password)
+    user = User(
+        email=user_data.email,
+        username=user_data.username,
+        password_hash=hashed_password,
+        gender=user_data.gender
+    )
+
+    db.add(user)
     db.commit()
-    db.refresh(db_task)
-    logger.info(f"Создана задача: {db_task.id}")
-    return db_task
+    db.refresh(user)
+
+    return user
 
 
-@app.put("/api/tasks/{task_id}")
-async def update_task(task_id: int, task: TaskCreate, db: Session = Depends(get_db)):
-    """Обновить задачу"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
-    if not db_task:
-        raise HTTPException(status_code=404, detail="Задача не найдена")
+@app.post("/login", response_model=Token)
+async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
+    user = db.query(User).filter(User.email == form_data.username).first()
+    if not user or not verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Неверный email или пароль",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
-    db_task.title = task.title
-    db_task.description = task.description
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": str(user.id)}, expires_delta=access_token_expires
+    )
+
+    return {"access_token": access_token, "token_type": "bearer"}
+
+
+# ==================== Профиль и аватар ====================
+
+@app.get("/profile", response_model=UserResponse)
+async def get_profile(current_user: User = Depends(get_current_user)):
+    return current_user
+
+
+@app.post("/upload-avatar")
+async def upload_avatar(
+        file: UploadFile = File(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Проверяем тип файла
+    if not file.content_type.startswith("image/"):
+        raise HTTPException(status_code=400, detail="Можно загружать только изображения")
+
+    # Генерируем уникальное имя файла
+    file_ext = file.filename.split(".")[-1]
+    filename = f"{current_user.id}_{int(datetime.utcnow().timestamp())}.{file_ext}"
+    file_path = os.path.join(AVATAR_DIR, filename)
+
+    # Сохраняем файл
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+
+    # Обновляем URL аватара в базе
+    avatar_url = f"/uploads/avatars/{filename}"
+    current_user.avatar_url = avatar_url
     db.commit()
-    return {"message": "Задача обновлена", "task_id": task_id}
+
+    return {"avatar_url": avatar_url, "message": "Аватар успешно загружен"}
 
 
-@app.delete("/api/tasks/{task_id}")
-async def delete_task(task_id: int, db: Session = Depends(get_db)):
-    """Удалить задачу"""
-    db_task = db.query(Task).filter(Task.id == task_id).first()
-    if not db_task:
-        raise HTTPException(status_code=404, detail="Задача не найдена")
+# ==================== Пары ====================
 
-    db.delete(db_task)
+@app.post("/couples/create")
+async def create_couple(
+        couple_name: str = Form(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Проверяем, что у пользователя еще нет пары
+    if current_user.couple_id:
+        raise HTTPException(status_code=400, detail="Вы уже состоите в паре")
+
+    # Создаем пару
+    couple = Couple(
+        couple_code=generate_couple_code(),
+        relationship_name=couple_name,
+        created_at=datetime.utcnow()
+    )
+
+    db.add(couple)
+    db.flush()
+
+    # Привязываем пользователя к паре
+    current_user.couple_id = couple.id
     db.commit()
-    return {"message": "Задача удалена", "task_id": task_id}
+    db.refresh(couple)
 
-
-@app.get("/api/version")
-async def get_version():
-    """Получить версию приложения"""
     return {
-        "version": "1.0.0",
-        "framework": "FastAPI",
-        "database": "PostgreSQL" if os.getenv("RENDER") else "SQLite"
+        "couple_id": couple.id,
+        "couple_code": couple.couple_code,
+        "message": "Пара создана. Поделитесь кодом с партнером"
     }
+
+
+@app.post("/couples/join")
+async def join_couple(
+        couple_code: str = Form(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Проверяем, что у пользователя еще нет пары
+    if current_user.couple_id:
+        raise HTTPException(status_code=400, detail="Вы уже состоите в паре")
+
+    # Находим пару по коду
+    couple = db.query(Couple).filter(Couple.couple_code == couple_code).first()
+    if not couple:
+        raise HTTPException(status_code=404, detail="Пара с таким кодом не найдена")
+
+    # Проверяем, что в паре есть место (максимум 2 человека)
+    partner_count = db.query(User).filter(User.couple_id == couple.id).count()
+    if partner_count >= 2:
+        raise HTTPException(status_code=400, detail="В этой паре уже есть двое участников")
+
+    # Привязываем пользователя к паре
+    current_user.couple_id = couple.id
+    db.commit()
+
+    return {
+        "couple_id": couple.id,
+        "relationship_name": couple.relationship_name,
+        "message": "Вы успешно присоединились к паре"
+    }
+
+
+@app.get("/couples/my", response_model=CoupleResponse)
+async def get_my_couple(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not current_user.couple_id:
+        raise HTTPException(status_code=404, detail="Вы не состоите в паре")
+
+    couple = db.query(Couple).filter(Couple.id == current_user.couple_id).first()
+
+    # Получаем информацию о партнере
+    partners = db.query(User).filter(User.couple_id == couple.id).all()
+    partner_info = []
+    for partner in partners:
+        partner_info.append({
+            "id": partner.id,
+            "username": partner.username,
+            "gender": partner.gender,
+            "avatar_url": partner.avatar_url
+        })
+
+    return {
+        "id": couple.id,
+        "couple_code": couple.couple_code,
+        "relationship_name": couple.relationship_name,
+        "avatar_url": couple.avatar_url,
+        "created_at": couple.created_at,
+        "partners": partner_info
+    }
+
+
+# ==================== Тесты ====================
+
+# Предзаполненные тесты
+DEFAULT_TESTS = [
+    {
+        "title": "Тест на совместимость",
+        "description": "Узнайте, насколько вы подходите друг другу",
+        "category": "compatibility",
+        "questions": [
+            {"id": 1, "text": "Насколько вы цените время, проведенное вместе?", "options": [
+                {"value": 1, "text": "Не очень"},
+                {"value": 2, "text": "Иногда"},
+                {"value": 3, "text": "Часто"},
+                {"value": 4, "text": "Очень"}
+            ]},
+            {"id": 2, "text": "Как часто вы обсуждаете будущее?", "options": [
+                {"value": 1, "text": "Никогда"},
+                {"value": 2, "text": "Редко"},
+                {"value": 3, "text": "Иногда"},
+                {"value": 4, "text": "Часто"}
+            ]}
+        ]
+    },
+    {
+        "title": "Тест на любовные языки",
+        "description": "Определите ваши языки любви",
+        "category": "love",
+        "questions": [
+            {"id": 1, "text": "Что для вас важнее в отношениях?", "options": [
+                {"value": "words", "text": "Слова поддержки"},
+                {"value": "time", "text": "Время вместе"},
+                {"value": "gifts", "text": "Подарки"},
+                {"value": "touch", "text": "Физический контакт"}
+            ]}
+        ]
+    }
+]
+
+
+@app.get("/tests/available")
+async def get_available_tests(current_user: User = Depends(get_current_user)):
+    return DEFAULT_TESTS
+
+
+@app.post("/tests/start")
+async def start_test(
+        test_title: str = Form(...),
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Находим тест по названию
+    test_data = next((t for t in DEFAULT_TESTS if t["title"] == test_title), None)
+    if not test_data:
+        raise HTTPException(status_code=404, detail="Тест не найден")
+
+    # Проверяем, что пользователь в паре
+    if not current_user.couple_id:
+        raise HTTPException(status_code=400, detail="Для прохождения теста нужно быть в паре")
+
+    # Создаем запись теста
+    test = Test(
+        title=test_data["title"],
+        description=test_data["description"],
+        category=test_data["category"],
+        questions=json.dumps(test_data["questions"]),
+        couple_id=current_user.couple_id,
+        created_by=current_user.id
+    )
+
+    db.add(test)
+    db.commit()
+    db.refresh(test)
+
+    return {
+        "test_id": test.id,
+        "title": test.title,
+        "questions": json.loads(test.questions)
+    }
+
+
+@app.post("/tests/{test_id}/submit")
+async def submit_test(
+        test_id: int,
+        answers: List[TestAnswer],
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Получаем тест
+    test = db.query(Test).filter(Test.id == test_id).first()
+    if not test:
+        raise HTTPException(status_code=404, detail="Тест не найден")
+
+    # Проверяем доступ
+    if test.couple_id != current_user.couple_id:
+        raise HTTPException(status_code=403, detail="Нет доступа к этому тесту")
+
+    # Вычисляем результат
+    score = 0
+    for answer in answers:
+        # Простая логика подсчета очков
+        if isinstance(answer.answer_value, int):
+            score += answer.answer_value
+        else:
+            score += 1
+
+    # Интерпретация результата
+    interpretation = ""
+    if score < 3:
+        interpretation = "Есть над чем поработать"
+    elif score < 6:
+        interpretation = "Хороший результат"
+    else:
+        interpretation = "Отличная совместимость!"
+
+    # Сохраняем результат
+    result = TestResult(
+        user_id=current_user.id,
+        test_id=test_id,
+        answers=json.dumps([a.dict() for a in answers]),
+        score=score,
+        interpretation=interpretation
+    )
+
+    db.add(result)
+    db.commit()
+
+    # Проверяем, прошел ли партнер тест
+    partner = db.query(User).filter(
+        User.couple_id == current_user.couple_id,
+        User.id != current_user.id
+    ).first()
+
+    partner_result = db.query(TestResult).filter(
+        TestResult.test_id == test_id,
+        TestResult.user_id == partner.id
+    ).first() if partner else None
+
+    # Если оба прошли тест, создаем общий результат
+    if partner_result:
+        combined_score = (score + partner_result.score) / 2
+        compatibility = min(int((combined_score / 8) * 100), 100)
+
+        shared_result = SharedTestResult(
+            couple_id=current_user.couple_id,
+            test_id=test_id,
+            combined_score=int(combined_score),
+            compatibility_percentage=compatibility,
+            insights=json.dumps({
+                "user1_score": score,
+                "user2_score": partner_result.score,
+                "comparison": "Ваши результаты хорошо дополняют друг друга" if abs(
+                    score - partner_result.score) <= 2 else "Есть различия в подходах"
+            })
+        )
+
+        db.add(shared_result)
+        db.commit()
+
+    return {
+        "score": score,
+        "interpretation": interpretation,
+        "message": "Результат сохранен. Ожидайте результаты партнера."
+    }
+
+
+@app.get("/tests/results")
+async def get_test_results(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    # Личные результаты
+    personal_results = db.query(TestResult).filter(
+        TestResult.user_id == current_user.id
+    ).all()
+
+    # Общие результаты пары
+    shared_results = []
+    if current_user.couple_id:
+        shared_results = db.query(SharedTestResult).filter(
+            SharedTestResult.couple_id == current_user.couple_id
+        ).all()
+
+    return {
+        "personal": [
+            {
+                "test_title": result.test.title,
+                "score": result.score,
+                "interpretation": result.interpretation,
+                "completed_at": result.completed_at
+            }
+            for result in personal_results
+        ],
+        "shared": [
+            {
+                "test_title": result.test.title,
+                "compatibility_percentage": result.compatibility_percentage,
+                "combined_score": result.combined_score,
+                "created_at": result.created_at
+            }
+            for result in shared_results
+        ]
+    }
+
+
+# ==================== Сообщения ====================
+
+@app.post("/messages/send")
+async def send_message(
+        message_data: LoveMessageCreate,
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not current_user.couple_id:
+        raise HTTPException(status_code=400, detail="Нужно быть в паре")
+
+    message = LoveMessage(
+        user_id=current_user.id,
+        couple_id=current_user.couple_id,
+        message=message_data.message,
+        is_anonymous=message_data.is_anonymous
+    )
+
+    db.add(message)
+    db.commit()
+
+    return {"message": "Сообщение отправлено", "message_id": message.id}
+
+
+@app.get("/messages")
+async def get_messages(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not current_user.couple_id:
+        return []
+
+    messages = db.query(LoveMessage).filter(
+        LoveMessage.couple_id == current_user.couple_id
+    ).order_by(LoveMessage.created_at.desc()).limit(50).all()
+
+    return [
+        {
+            "id": msg.id,
+            "username": "Аноним" if msg.is_anonymous else msg.user.username,
+            "message": msg.message,
+            "created_at": msg.created_at,
+            "is_yours": msg.user_id == current_user.id
+        }
+        for msg in messages
+    ]
+
+
+# ==================== Статистика ====================
+
+@app.get("/stats")
+async def get_couple_stats(
+        current_user: User = Depends(get_current_user),
+        db: Session = Depends(get_db)
+):
+    if not current_user.couple_id:
+        raise HTTPException(status_code=400, detail="Нужно быть в паре")
+
+    # Количество пройденных тестов
+    test_count = db.query(TestResult).filter(
+        TestResult.user_id == current_user.id
+    ).count()
+
+    # Средняя совместимость
+    shared_results = db.query(SharedTestResult).filter(
+        SharedTestResult.couple_id == current_user.couple_id
+    ).all()
+
+    avg_compatibility = 0
+    if shared_results:
+        avg_compatibility = sum(r.compatibility_percentage for r in shared_results) / len(shared_results)
+
+    # Количество сообщений
+    message_count = db.query(LoveMessage).filter(
+        LoveMessage.couple_id == current_user.couple_id
+    ).count()
+
+    # Партнер
+    partner = db.query(User).filter(
+        User.couple_id == current_user.couple_id,
+        User.id != current_user.id
+    ).first()
+
+    partner_name = partner.username if partner else "Ожидание партнера"
+
+    return {
+        "test_count": test_count,
+        "avg_compatibility": round(avg_compatibility, 1),
+        "message_count": message_count,
+        "partner_name": partner_name,
+        "together_since": current_user.couple.created_at if current_user.couple else None
+    }
+
+
+# Health check
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "service": "Love Application"}
 
 
 if __name__ == "__main__":
     import uvicorn
 
-    port = int(os.getenv("PORT", 8000))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
