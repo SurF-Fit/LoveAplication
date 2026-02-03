@@ -6,8 +6,10 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
+      - key: FRONTEND_URL
+        value: https://loveaplication-frontend.onrender.com
       - key: CORS_ORIGINS
-        value: https://loveaplication-frontend.onrender.com,http://localhost:3000,http://127.0.0.1:3000
+        value: https://loveaplication-frontend.onrender.com,http://localhost:3000
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL

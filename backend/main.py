@@ -12,6 +12,7 @@ from passlib.context import CryptContext
 import uuid
 import json
 from fastapi.staticfiles import StaticFiles
+from pydantic import BaseModel
 
 # Импорт моделей и схем
 from models import Base, User, Couple, Test, TestResult, SharedTestResult, LoveMessage
@@ -180,11 +181,17 @@ async def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
     return user
 
+class LoginForm(BaseModel):
+    username: str
+    password: str
+
 
 @app.post("/login", response_model=Token)
-async def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.password_hash):
+async def login(login_data: LoginForm, db: Session = Depends(get_db)):
+    # Ищем пользователя по email (который приходит как username)
+    user = db.query(User).filter(User.email == login_data.username).first()
+
+    if not user or not verify_password(login_data.password, user.password_hash):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Неверный email или пароль",
