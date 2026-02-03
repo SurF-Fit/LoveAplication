@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Page</title>
+</head>
+<body>
+    <h1>Render Static Files Test</h1>
+    <p>If you see this, HTML files work.</p>
+
+    <h2>Test static files:</h2>
+    <ul>
+        <li><a href="/static/css/main.css">CSS File</a></li>
+        <li><a href="/static/js/main.js">JS File</a></li>
+        <li><a href="/favicon.ico">Favicon</a></li>
+    </ul>
+
+    <h2>Check paths:</h2>
+    <div id="paths"></div>
+
+    <script>
+        document.getElementById('paths').innerHTML = `
+            <p>Current path: ${window.location.pathname}</p>
+            <p>Build folder should contain:</p>
+            <ul>
+                <li>/index.html</li>
+                <li>/static/css/main.[hash].css</li>
+                <li>/static/js/main.[hash].js</li>
+            </ul>
+        `;
+    </script>
+</body>
+</html>
