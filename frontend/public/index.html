@@ -6,14 +6,18 @@
     <meta name="theme-color" content="#000000" />
     <meta name="description" content="Love Application - приложение для пар" />
 
-    <!-- Измените base href -->
-    <base href="/" />
+    <!-- УДАЛИТЕ preload строки! -->
+    <!-- <link rel="preload" href="%PUBLIC_URL%/static/css/main.css" as="style"> -->
+    <!-- <link rel="preload" href="%PUBLIC_URL%/static/js/main.js" as="script"> -->
 
     <title>Love Application</title>
 
-    <!-- Preload основных файлов -->
-    <link rel="preload" href="%PUBLIC_URL%/static/css/main.css" as="style">
-    <link rel="preload" href="%PUBLIC_URL%/static/js/main.js" as="script">
+    <!-- Временно используйте Tailwind CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+      body { font-family: 'Inter', sans-serif; }
+    </style>
   </head>
   <body>
     <noscript>
@@ -23,5 +27,58 @@
       </div>
     </noscript>
     <div id="root"></div>
+
+    <!-- Fallback для быстрого отображения -->
+    <script>
+      setTimeout(() => {
+        const root = document.getElementById('root');
+        if (root && root.innerHTML.trim() === '') {
+          root.innerHTML = `
+            <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);">
+              <h1 style="color: #be185d; font-size: 3rem; margin-bottom: 1rem; animation: pulse 2s infinite;">❤️ Love Application</h1>
+              <p style="color: #666; font-size: 1.2rem; text-align: center; max-width: 500px; margin-bottom: 2rem;">
+                Приложение загружается...
+              </p>
+              <div style="width: 60px; height: 60px; border: 4px solid #f3f4f6; border-top: 4px solid #ec4899; border-radius: 50%; animation: spin 1s linear infinite;"></div>
+            </div>
+          `;
+        }
+      }, 100);
+
+      // Проверка загрузки React
+      setTimeout(() => {
+        if (!window.React) {
+          const root = document.getElementById('root');
+          if (root) {
+            root.innerHTML = `
+              <div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px; background: linear-gradient(135deg, #fce7f3 0%, #fbcfe8 100%);">
+                <h1 style="color: #be185d; font-size: 3rem; margin-bottom: 1rem;">❤️ Love Application</h1>
+                <div style="background: white; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.1); max-width: 500px;">
+                  <p style="color: #666; margin-bottom: 1rem;">React не загрузился. Возможные причины:</p>
+                  <ul style="text-align: left; color: #666; margin-bottom: 1.5rem;">
+                    <li>Статические файлы не загрузились</li>
+                    <li>Попробуйте обновить страницу (Ctrl+F5)</li>
+                    <li>Или проверьте консоль (F12)</li>
+                  </ul>
+                  <button onclick="window.location.reload()" style="background: #ec4899; color: white; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; cursor: pointer;">
+                    Обновить страницу
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+        }
+      }, 5000);
+    </script>
+    <style>
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+      @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.7; }
+      }
+    </style>
   </body>
 </html>

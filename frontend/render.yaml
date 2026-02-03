@@ -1,4 +1,4 @@
-static_sites:
+staticSites:
   - name: loveapplication-frontend
     buildCommand: npm install && npm run build
     staticPublishPath: ./build
@@ -6,15 +6,9 @@ static_sites:
       - path: /*
         name: Content-Type
         value: text/html
-      - path: /static/css/*
-        name: Content-Type
-        value: text/css
-      - path: /static/js/*
-        name: Content-Type
-        value: application/javascript
-      - path: /assets/*
-        name: Content-Type
-        value: image/png
+      - path: /static/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
     routes:
       - type: rewrite
         source: /*
