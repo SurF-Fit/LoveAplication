@@ -644,6 +644,45 @@ async def health_check():
     return {"status": "healthy", "service": "Love Application"}
 
 
+@app.get("/debug/db-info")
+async def debug_db_info(db: Session = Depends(get_db)):
+    """Информация о БД и пользователях"""
+
+    # Проверка подключения
+    try:
+        db.execute("SELECT 1")
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+
+    # Получаем пользователей
+    users = []
+    try:
+        user_records = db.query(User).all()
+        for u in user_records:
+            users.append({
+                "id": u.id,
+                "email": u.email,
+                "username": u.username,
+                "hash_length": len(u.password_hash) if u.password_hash else 0,
+                "hash_preview": u.password_hash[:20] + "..." if u.password_hash else None,
+                "created_at": str(u.created_at) if u.created_at else None
+            })
+    except Exception as e:
+        users = f"error: {str(e)}"
+
+    # Проверяем переменные окружения
+    import os
+    return {
+        "database_url_exists": bool(os.getenv("DATABASE_URL")),
+        "database_url_preview": os.getenv("DATABASE_URL", "not found")[:50] + "..." if os.getenv(
+            "DATABASE_URL") else None,
+        "db_status": db_status,
+        "user_count": len(user_records) if isinstance(users, list) else 0,
+        "users": users
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 
