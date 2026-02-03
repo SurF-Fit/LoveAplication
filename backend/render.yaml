@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: my-spa-backend
+    env: python
+    region: Russia  # Или ближайший к вам
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+    healthCheckPath: /api/health
+    autoDeploy: true
+
+  - type: web
+    name: my-spa-frontend
+    env: static
+    buildCommand: cd ../frontend && npm run build  # Если используете сборку
+    staticPublishPath: ./frontend  # Путь к статическим файлам
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    headers:
+      - path: /*
+        name: Cache-Control
+        value: public, max-age=3600
