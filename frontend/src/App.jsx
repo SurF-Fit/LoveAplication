@@ -4,14 +4,16 @@ import { Toaster } from 'react-hot-toast';
 import { AuthProvider } from './context/AuthContext';
 import ProtectedRoute from './components/ProtectedRoute';
 
-// Pages
+// Pages (создайте эти компоненты)
 import Login from './pages/Login';
 import Register from './pages/Register';
 import Dashboard from './pages/Dashboard';
-import Profile from './pages/Profile';
-import Tests from './pages/Tests';
-import Messages from './pages/Messages';
-import Couple from './pages/Couple';
+
+// Временные заглушки для отсутствующих компонентов
+const Profile = () => <div>Profile Page</div>;
+const Tests = () => <div>Tests Page</div>;
+const Messages = () => <div>Messages Page</div>;
+const Couple = () => <div>Couple Page</div>;
 
 function App() {
   return (
