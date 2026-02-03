@@ -36,7 +36,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        os.getenv("FRONTEND_URL", "https://your-frontend.onrender.com")
+        os.getenv("FRONTEND_URL", "https://loveaplication-frontend.onrender.com/")
     ],
     allow_credentials=True,
     allow_methods=["*"],
