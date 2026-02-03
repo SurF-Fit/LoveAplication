@@ -36,11 +36,14 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        os.getenv("FRONTEND_URL", "https://loveaplication-frontend.onrender.com/")
+        "http://127.0.0.1:3000",
+        "https://loveaplication-frontend.onrender.com/",
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
+    max_age=600,  # Кэшировать preflight на 10 минут
 )
 
 # Настройки
