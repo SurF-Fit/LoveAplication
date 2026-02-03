@@ -11,6 +11,7 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 import uuid
 import json
+from fastapi.staticfiles import StaticFiles
 
 # Импорт моделей и схем
 from models import Base, User, Couple, Test, TestResult, SharedTestResult, LoveMessage
@@ -24,6 +25,7 @@ from schemas import (
     Token, TokenData
 )
 
+
 # Создаем таблицы
 Base.metadata.create_all(bind=engine)
 
@@ -32,7 +34,10 @@ app = FastAPI(title="Love Application", version="1.0.0")
 # CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        os.getenv("FRONTEND_URL", "https://your-frontend.onrender.com")
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

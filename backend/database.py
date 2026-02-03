@@ -3,14 +3,14 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
-# Получаем URL базы данных из переменных окружения
+# Критически важно для Render!
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# Если DATABASE_URL начинается с postgres://, меняем на postgresql://
+# Render использует postgres://, но SQLAlchemy требует postgresql://
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-# Если нет DATABASE_URL, используем SQLite для локальной разработки
+# Для локальной разработки
 if not DATABASE_URL:
     DATABASE_URL = "sqlite:///./loveapp.db"
 
