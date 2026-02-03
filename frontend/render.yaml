@@ -1,14 +1,9 @@
-staticSites:
-  - name: loveapplication-frontend
-    buildCommand: npm install && npm run build
-    staticPublishPath: ./build
-    headers:
-      - path: /*
-        name: Content-Type
-        value: text/html
-      - path: /static/*
-        name: Cache-Control
-        value: public, max-age=31536000, immutable
+services:
+  - type: web
+    name: loveapplication-frontend
+    env: static
+    buildCommand: npm run build
+    staticPublishPath: build
     routes:
       - type: rewrite
         source: /*
