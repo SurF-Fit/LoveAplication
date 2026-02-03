@@ -1,5 +1,5 @@
 // Базовый URL API - автоматически определяется
-const API_BASE = window.location.hostname === 'localhost'
+const API_BASE = window.location.origin
     ? 'http://localhost:8000'
     : window.location.origin; // На Render будет тот же домен
 
