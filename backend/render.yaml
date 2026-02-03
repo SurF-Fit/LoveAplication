@@ -1,13 +1,13 @@
 services:
   - type: web
-    name: loveapplication-backend
+    name: loveaplication-backend
     env: python
     region: singapore  # или singapore, oregon, ohio
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
       - key: CORS_ORIGINS
-        value: https://loveaplication-frontend.onrender.com,http://localhost:3000
+        value: https://loveaplication-frontend.onrender.com,http://localhost:3000,http://127.0.0.1:3000
       - key: PYTHON_VERSION
         value: 3.11.0
       - key: DATABASE_URL

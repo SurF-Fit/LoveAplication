@@ -37,7 +37,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "https://loveaplication-frontend.onrender.com/",
+        "https://loveaplication-frontend.onrender.com",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -112,6 +112,48 @@ async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = De
 # Функция для генерации кода пары
 def generate_couple_code():
     return str(uuid.uuid4())[:8].upper()
+
+
+# =========== CORS FIX: OPTIONS HANDLER ===========
+from fastapi import Request
+
+
+@app.middleware("http")
+async def add_cors_headers(request: Request, call_next):
+    response = await call_next(request)
+
+    # Разрешаем только ваш фронтенд
+    allowed_origin = "https://loveaplication-frontend.onrender.com"
+
+    # Проверяем Origin заголовок
+    origin = request.headers.get("origin")
+    if origin == allowed_origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    # Обязательные заголовки для CORS
+    if request.method == "OPTIONS":
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization, X-Requested-With"
+        response.headers["Access-Control-Max-Age"] = "600"
+
+    return response
+
+
+# Явные обработчики OPTIONS для /register и /login
+@app.options("/register")
+@app.options("/login")
+async def options_handler():
+    return JSONResponse(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": "https://loveaplication-frontend.onrender.com",
+            "Access-Control-Allow-Methods": "POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Content-Type, Authorization",
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Max-Age": "600"
+        }
+    )
 
 
 # ==================== Аутентификация ====================
