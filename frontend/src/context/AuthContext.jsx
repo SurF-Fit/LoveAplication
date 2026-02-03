@@ -24,6 +24,7 @@ export const AuthProvider = ({ children }) => {
       const response = await api.get('/profile');
       setUser(response.data);
     } catch (error) {
+      console.error('Failed to load user:', error);
       localStorage.removeItem('token');
       delete api.defaults.headers.common['Authorization'];
     } finally {
