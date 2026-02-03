@@ -34,21 +34,17 @@ const Tests = () => {
     }
   };
 
-  const startTest = async (test) => {
-    try {
-      const formData = new FormData();
-      formData.append('test_title', test.title);
+  const startTest = async (testTitle) => {
+  const formData = new FormData();
+  formData.append('test_title', testTitle);
 
-      const response = await api.post('/tests/start', formData);
-      setSelectedTest({
-        ...test,
-        test_id: response.data.test_id,
-        questions: response.data.questions
-      });
-    } catch (error) {
-      toast.error(error.response?.data?.detail || 'Ошибка начала теста');
-    }
-  };
+  const response = await api.post('/tests/start', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  });
+  return response.data;
+};
 
   const handleAnswer = (questionId, value) => {
     setAnswers(prev => {
