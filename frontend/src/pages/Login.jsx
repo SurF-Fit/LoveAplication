@@ -17,7 +17,7 @@ const Login = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-pink-50 to-red-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-xl shadow-lg p-8 max-w-md w-full">
-        <h1 className="text-2xl font-bold text-center mb-6">Вход в Love Application</h1>
+        <h1 className="text-2xl font-bold text-center mb-6">Вход в Секрет</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -56,14 +56,6 @@ const Login = () => {
           </button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-gray-600">
-            Нет аккаунта?{' '}
-            <Link to="/register" className="text-pink-600 hover:text-pink-700 font-medium">
-              Зарегистрироваться
-            </Link>
-          </p>
-        </div>
 
         <div className="mt-6 text-center text-sm text-gray-500">
           <p>Для теста используйте любые данные</p>
