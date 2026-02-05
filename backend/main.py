@@ -122,6 +122,20 @@ def generate_couple_code():
 # =========== CORS FIX: OPTIONS HANDLER ===========
 from fastapi import Request
 
+@app.get("/")
+async def root():
+    return {
+        "message": "Love Application API",
+        "version": "1.0.0",
+        "endpoints": {
+            "register": "/register",
+            "login": "/login",
+            "health": "/health",
+            "profile": "/profile",
+            "tests": "/tests/available",
+            "couples": "/couples/my"
+        }
+    }
 
 @app.get("/admin/init-db")
 def init_db():
