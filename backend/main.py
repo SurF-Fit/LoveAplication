@@ -26,6 +26,7 @@ from schemas import (
     SharedResultResponse, LoveMessageCreate,
     Token, TokenData
 )
+from sqlalchemy import text
 
 
 # Создаем таблицы
@@ -64,6 +65,15 @@ UPLOAD_DIR = "uploads"
 AVATAR_DIR = os.path.join(UPLOAD_DIR, "avatars")
 os.makedirs(AVATAR_DIR, exist_ok=True)
 
+def grant_permissions():
+    """Дать права пользователю loveapp_user"""
+    with Session(engine) as session:
+        # Даем все права
+        session.execute(text("GRANT ALL ON SCHEMA public TO loveapp_user;"))
+        session.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO loveapp_user;"))
+        session.execute(text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO loveapp_user;"))
+        session.commit()
+        print("✅ Права выданы!")
 
 # Dependency для БД
 def get_db():
@@ -122,6 +132,22 @@ def generate_couple_code():
 # =========== CORS FIX: OPTIONS HANDLER ===========
 from fastapi import Request
 
+
+@app.get("/admin/init-db")
+def init_db():
+    """Инициализация БД через веб-интерфейс"""
+    from sqlalchemy import text
+    from database import engine
+
+    with engine.connect() as conn:
+        # Создаем таблицы
+        # ... ваш код создания таблиц
+
+        # Даем права
+        conn.execute(text("GRANT ALL ON SCHEMA public TO loveapp_user;"))
+        conn.commit()
+
+    return {"message": "База данных инициализирована"}
 
 @app.middleware("http")
 async def add_cors_headers(request: Request, call_next):
