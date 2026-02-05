@@ -1,4 +1,0 @@
-FROM ankane/pghero:latest
-ENV RAILS_ENV=production
-EXPOSE 8080
-CMD ["pghero"]

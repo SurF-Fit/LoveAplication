@@ -1,0 +1,10 @@
+FROM ruby:3.2
+
+# Установите PgHero без строгих проверок
+RUN gem install pghero
+
+# Патч для пропуска проверки расширений
+RUN sed -i "s/raise.*pg_stat_statements.*/puts 'Warning: pg_stat_statements not found'/g" \
+    $(gem which pghero)/lib/pghero.rb
+
+CMD ["pghero"]

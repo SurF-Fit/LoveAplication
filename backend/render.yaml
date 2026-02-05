@@ -2,7 +2,7 @@ services:
   - type: web
     name: loveaplication-backend
     env: python
-    region: singapore  # или singapore, oregon, ohio
+    region: singapore
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
     envVars:
@@ -23,17 +23,26 @@ services:
     healthCheckPath: /health
     autoDeploy: true
 
+  # ПРОБЛЕМА БЫЛА ЗДЕСЬ: лишние пробелы и неправильный синтаксис
   - type: web
-      name: PgHero-dpg-d60t5svfte5s73bes350-a
-      env: docker
-      dockerfilePath: Dockerfile.pghero
-      envVars:
-        - key: DATABASE_URL
-          fromDatabase:
-            name: loveapp-db  # имя вашей БД на Render
-            property: connectionString
-        - key: PGHERO_USERNAME
-          value: pghero-f39be2f7
-        - key: PGHERO_PASSWORD
-          value: fa6b7cedf03eae11c3acc084e167ff45
-      plan: free
+    name: pghero-monitor  # Поменяйте имя на простое
+    env: docker
+    region: singapore  # Должен быть тот же регион что и БД!
+    dockerfilePath: Dockerfile.pghero
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: loveapp-db
+          property: connectionString
+      - key: PGHERO_USERNAME
+        value: admin  # Используйте простое имя
+      - key: PGHERO_PASSWORD
+        value: your-strong-password-here  # Замените на реальный пароль
+      - key: RAILS_ENV
+        value: production
+      - key: RAILS_LOG_TO_STDOUT
+        value: true
+      - key: RAILS_SERVE_STATIC_FILES
+        value: true
+    plan: free
+    autoDeploy: true
