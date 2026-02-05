@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, status
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException, Depends, status, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.responses import JSONResponse
@@ -15,7 +15,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 import hashlib
 
-# Импорт моделей и схем
+# 1. СНАЧАЛА импортируем модели и схемы
 from models import Base, User, Couple, Test, TestResult, SharedTestResult, LoveMessage
 from database import engine, SessionLocal
 from schemas import (
@@ -64,16 +64,6 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
 UPLOAD_DIR = "uploads"
 AVATAR_DIR = os.path.join(UPLOAD_DIR, "avatars")
 os.makedirs(AVATAR_DIR, exist_ok=True)
-
-def grant_permissions():
-    """Дать права пользователю loveapp_user"""
-    with Session(engine) as session:
-        # Даем все права
-        session.execute(text("GRANT ALL ON SCHEMA public TO loveapp_user;"))
-        session.execute(text("ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO loveapp_user;"))
-        session.execute(text("GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO loveapp_user;"))
-        session.commit()
-        print("✅ Права выданы!")
 
 # Dependency для БД
 def get_db():
@@ -136,18 +126,76 @@ from fastapi import Request
 @app.get("/admin/init-db")
 def init_db():
     """Инициализация БД через веб-интерфейс"""
-    from sqlalchemy import text
-    from database import engine
+    try:
+        from sqlalchemy import text
+        from database import engine
 
-    with engine.connect() as conn:
-        # Создаем таблицы
-        # ... ваш код создания таблиц
+        database_url = os.getenv("DATABASE_URL", "")
 
-        # Даем права
-        conn.execute(text("GRANT ALL ON SCHEMA public TO loveapp_user;"))
-        conn.commit()
+        with engine.connect() as conn:
+            if "postgres" in database_url:
+                try:
+                    conn.execute(text("GRANT ALL ON SCHEMA public TO loveapp_user;"))
+                    print("✅ Права выданы")
+                except Exception as grant_error:
+                    print(f"⚠️ Не удалось выдать права: {grant_error}")
 
-    return {"message": "База данных инициализирована"}
+            conn.commit()
+
+        return {
+                "message": "База данных инициализирована",
+                "database_type": "PostgreSQL" if "postgres" in database_url else "SQLite",
+                "tables_created": True
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/test-db")
+async def test_database():
+    """Тестирование БД"""
+    try:
+        # Проверяем подключение
+        with SessionLocal() as db:
+            db.execute("SELECT 1")
+
+        # Проверяем таблицы
+        from sqlalchemy import inspect
+        inspector = inspect(engine)
+        tables = inspector.get_table_names()
+
+        return {
+            "status": "success",
+            "database_url_preview": os.getenv("DATABASE_URL", "not set")[:50] + "..." if os.getenv(
+                "DATABASE_URL") else "not set",
+            "database_type": "PostgreSQL" if "postgres" in os.getenv("DATABASE_URL", "") else "SQLite",
+            "tables": tables,
+            "table_count": len(tables),
+            "engine_url": str(engine.url)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error": str(e),
+            "database_url": os.getenv("DATABASE_URL", "not set")
+        }
+
+
+@app.get("/admin/check-tables")
+async def check_tables():
+    """Проверка существующих таблиц"""
+    from sqlalchemy import inspect
+
+    inspector = inspect(engine)
+    tables = inspector.get_table_names()
+
+    return {
+        "tables": tables,
+        "has_users_table": "users" in tables,
+        "has_couples_table": "couples" in tables,
+        "table_count": len(tables)
+    }
 
 @app.middleware("http")
 async def add_cors_headers(request: Request, call_next):
